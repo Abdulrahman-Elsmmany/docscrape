@@ -1,10 +1,18 @@
-# docscrape
+<p align="center">
+  <img src="https://raw.githubusercontent.com/Abdulrahman-Elsmmany/Abdulrahman-Elsmmany/main/assets/docscrape-logo.png" alt="docscrape logo" width="200">
+</p>
 
-> Scrape any documentation site to Markdown in seconds.
+<h1 align="center">docscrape</h1>
 
-[![Python 3.10+](https://img.shields.io/badge/python-3.10+-blue.svg)](https://www.python.org/downloads/)
-[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
-[![Code style: ruff](https://img.shields.io/badge/code%20style-ruff-000000.svg)](https://github.com/astral-sh/ruff)
+<p align="center">
+  <strong>Scrape any documentation site to Markdown in seconds.</strong>
+</p>
+
+<p align="center">
+  <a href="https://www.python.org/downloads/"><img src="https://img.shields.io/badge/python-3.10+-blue.svg" alt="Python 3.10+"></a>
+  <a href="https://opensource.org/licenses/MIT"><img src="https://img.shields.io/badge/License-MIT-yellow.svg" alt="License: MIT"></a>
+  <a href="https://github.com/astral-sh/ruff"><img src="https://img.shields.io/badge/code%20style-ruff-000000.svg" alt="Code style: ruff"></a>
+</p>
 
 **docscrape** converts any documentation website into clean Markdown files perfect for:
 
@@ -140,9 +148,9 @@ docscrape platforms
 ┏━━━━━━━━━━┳━━━━━━━━━━━━━━━━━━━━━━━━━━━━┳━━━━━━━━━━━┓
 ┃ Platform ┃ Base URL                   ┃ Discovery ┃
 ┡━━━━━━━━━━╇━━━━━━━━━━━━━━━━━━━━━━━━━━━━╇━━━━━━━━━━━┩
-│ livekit  │ https://docs.livekit.io   │ llms_txt  │
-│ pipecat  │ https://docs.pipecat.ai   │ sitemap   │
-│ retellai │ https://docs.retellai.com │ sitemap   │
+│ livekit  │ https://docs.livekit.io    │ llms_txt  │
+│ pipecat  │ https://docs.pipecat.ai    │ sitemap   │
+│ retellai │ https://docs.retellai.com  │ sitemap   │
 └──────────┴────────────────────────────┴───────────┘
 Note: Any documentation site works! These platforms have optimized adapters.
 ```
@@ -181,14 +189,14 @@ word_count: 1523
 
 ## Features
 
-| Feature | Description |
-|---------|-------------|
-| **Universal** | Works with any documentation site |
-| **Smart Defaults** | Auto-detects output folder from URL |
-| **Resumable** | Continue interrupted scrapes with `-r` |
-| **Clean Output** | Markdown with YAML frontmatter |
-| **Rate Limited** | Respects servers with configurable delays |
-| **Optimized Adapters** | Better extraction for known platforms |
+| Feature                | Description                               |
+| ---------------------- | ----------------------------------------- |
+| **Universal**          | Works with any documentation site         |
+| **Smart Defaults**     | Auto-detects output folder from URL       |
+| **Resumable**          | Continue interrupted scrapes with `-r`    |
+| **Clean Output**       | Markdown with YAML frontmatter            |
+| **Rate Limited**       | Respects servers with configurable delays |
+| **Optimized Adapters** | Better extraction for known platforms     |
 
 ## Discovery Strategies
 
