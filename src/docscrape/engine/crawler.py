@@ -10,6 +10,17 @@ from datetime import datetime
 from typing import AsyncIterator, Optional
 
 import httpx
+from rich.console import Console
+from rich.progress import (
+    BarColumn,
+    Progress,
+    SpinnerColumn,
+    TaskProgressColumn,
+    TextColumn,
+    TimeElapsedColumn,
+)
+
+console = Console()
 
 from docscrape.core.interfaces import PlatformAdapter, StorageBackend
 from docscrape.core.models import (
@@ -53,6 +64,14 @@ class DocumentationCrawler:
         # Initialize or load manifest
         await self._init_manifest()
 
+        # Use progress bar unless quiet mode
+        if self._config.quiet:
+            return await self._crawl_without_progress()
+
+        return await self._crawl_with_progress()
+
+    async def _crawl_without_progress(self) -> ScrapeManifest:
+        """Run crawl without progress bar (quiet mode)."""
         # Discover URLs
         if self._config.verbose:
             print(f"\n{'='*60}")
@@ -86,6 +105,67 @@ class DocumentationCrawler:
         # Crawl URLs
         async for result in self._crawl_urls(urls):
             await self._process_result(result)
+
+        # Finalize manifest
+        self._manifest.completed_at = datetime.utcnow()  # type: ignore
+        await self._storage.save_manifest(self._manifest, self._config.output_dir)  # type: ignore
+
+        return self._manifest  # type: ignore
+
+    async def _crawl_with_progress(self) -> ScrapeManifest:
+        """Run crawl with Rich progress bar."""
+        with Progress(
+            SpinnerColumn(),
+            TextColumn("[progress.description]{task.description}"),
+            BarColumn(),
+            TaskProgressColumn(),
+            TimeElapsedColumn(),
+            console=console,
+            transient=True,
+        ) as progress:
+            # Discovery phase
+            discovery_task = progress.add_task(
+                "[cyan]Discovering URLs...", total=None
+            )
+
+            if self._config.verbose:
+                console.print(f"\n{'='*60}")
+                console.print(f"Discovering URLs from {self._config.base_url}")
+                console.print(f"{'='*60}\n")
+
+            urls = await self._discover_urls()
+            progress.remove_task(discovery_task)
+
+            if not urls:
+                console.print("[yellow]No URLs found to crawl.[/yellow]")
+                return self._manifest  # type: ignore
+
+            # Filter out already completed URLs if resuming
+            if self._config.resume and self._completed_urls:
+                original_count = len(urls)
+                urls = [u for u in urls if u.url not in self._completed_urls]
+                if self._config.verbose:
+                    skipped = original_count - len(urls)
+                    console.print(f"Resuming: skipping {skipped} already crawled URLs")
+
+            # Apply max_pages limit
+            if self._config.max_pages > 0:
+                urls = urls[: self._config.max_pages]
+
+            self._manifest.total_urls = len(urls)  # type: ignore
+
+            if self._config.verbose:
+                console.print(f"\nWill crawl {len(urls)} URLs")
+                console.print(f"{'='*60}\n")
+
+            # Crawl phase with progress bar
+            crawl_task = progress.add_task(
+                f"[green]Crawling {len(urls)} pages...",
+                total=len(urls),
+            )
+
+            async for result in self._crawl_urls(urls, progress, crawl_task):
+                await self._process_result(result)
 
         # Finalize manifest
         self._manifest.completed_at = datetime.utcnow()  # type: ignore
@@ -154,12 +234,17 @@ class DocumentationCrawler:
         return urls
 
     async def _crawl_urls(
-        self, urls: list[DiscoveredUrl]
+        self,
+        urls: list[DiscoveredUrl],
+        progress: Optional[Progress] = None,
+        task_id: Optional[int] = None,
     ) -> AsyncIterator[CrawlResult]:
         """Crawl a list of URLs.
 
         Args:
             urls: URLs to crawl.
+            progress: Optional Rich progress bar.
+            task_id: Optional task ID for progress updates.
 
         Yields:
             CrawlResult for each URL.
@@ -173,6 +258,14 @@ class DocumentationCrawler:
             for i, discovered in enumerate(urls, 1):
                 url = discovered.url
                 start_time = time.time()
+
+                # Update progress bar with truncated URL
+                if progress is not None and task_id is not None:
+                    truncated_url = self._truncate_url(url, max_len=50)
+                    progress.update(
+                        task_id,
+                        description=f"[green]Crawling:[/green] {truncated_url}",
+                    )
 
                 if self._config.verbose:
                     print(f"[{i}/{total}] Crawling: {url}")
@@ -202,8 +295,19 @@ class DocumentationCrawler:
                         duration_ms=duration,
                     )
 
+                # Advance progress bar
+                if progress is not None and task_id is not None:
+                    progress.advance(task_id)
+
                 # Rate limiting
                 await asyncio.sleep(self._config.request_delay)
+
+    def _truncate_url(self, url: str, max_len: int = 50) -> str:
+        """Truncate URL for display in progress bar."""
+        if len(url) <= max_len:
+            return url
+        # Keep the last part of the URL (path)
+        return "..." + url[-(max_len - 3) :]
 
     async def _fetch_and_extract(
         self, client: httpx.AsyncClient, url: str

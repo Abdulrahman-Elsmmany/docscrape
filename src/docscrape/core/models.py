@@ -32,6 +32,7 @@ class ScrapeConfig:
     exclude_patterns: list[str] = field(default_factory=list)
     resume: bool = False
     verbose: bool = False
+    quiet: bool = False  # Suppress progress bar
 
 
 @dataclass

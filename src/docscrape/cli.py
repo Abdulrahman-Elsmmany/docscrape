@@ -115,6 +115,7 @@ def _scrape(
     delay: float,
     resume: bool,
     verbose: bool,
+    quiet: bool,
     include: Optional[list[str]],
     exclude: Optional[list[str]],
 ) -> None:
@@ -139,6 +140,7 @@ def _scrape(
         request_delay=delay,
         resume=resume,
         verbose=verbose,
+        quiet=quiet,
         include_patterns=include or [],
         exclude_patterns=exclude or [],
     )
@@ -230,6 +232,14 @@ def scrape(
             help="Verbose output",
         ),
     ] = False,
+    quiet: Annotated[
+        bool,
+        typer.Option(
+            "-q",
+            "--quiet",
+            help="Suppress progress bar (for scripting/CI)",
+        ),
+    ] = False,
     include: Annotated[
         Optional[list[str]],
         typer.Option(
@@ -255,7 +265,7 @@ def scrape(
         docscrape scrape https://docs.livekit.io -o ./livekit-docs
         docscrape scrape https://docs.example.com -m 50 -v
     """
-    _scrape(url, output, max_pages, delay, resume, verbose, include, exclude)
+    _scrape(url, output, max_pages, delay, resume, verbose, quiet, include, exclude)
 
 
 @app.command("platforms")
