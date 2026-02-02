@@ -9,7 +9,7 @@ Usage:
     docscrape https://docs.pipecat.ai -o ./my-docs
 """
 
-__version__ = "0.2.0"
+__version__ = "0.2.1"
 __author__ = "Abdulrahman Elsmmany"
 
 from docscrape.core.interfaces import (
