@@ -5,8 +5,8 @@ from urllib.parse import urlparse
 
 from docscrape.adapters.generic import GenericAdapter
 from docscrape.core.interfaces import DiscoveryStrategy
-from docscrape.discovery.sitemap import SitemapDiscovery
 from docscrape.discovery.recursive import RecursiveCrawlDiscovery
+from docscrape.discovery.sitemap import SitemapDiscovery
 
 
 class PipecatAdapter(GenericAdapter):
@@ -79,10 +79,7 @@ class PipecatAdapter(GenericAdapter):
     def should_skip(self, url: str) -> bool:
         """Check if URL should be skipped."""
         # Skip API reference pages
-        if "/api/" in url and "/api/overview" not in url:
-            return True
-
-        return False
+        return "/api/" in url and "/api/overview" not in url
 
     def get_url_priority(self, url: str) -> int:
         """Get priority for URL ordering."""

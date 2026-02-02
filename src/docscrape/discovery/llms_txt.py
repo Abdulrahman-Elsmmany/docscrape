@@ -5,7 +5,7 @@ in a format optimized for LLM consumption. This strategy parses that file.
 """
 
 import re
-from typing import AsyncIterator
+from collections.abc import AsyncIterator
 from urllib.parse import urljoin
 
 import httpx
@@ -29,9 +29,7 @@ class LlmsTxtDiscovery(DiscoveryStrategy):
     def name(self) -> str:
         return "llms_txt"
 
-    async def discover(
-        self, config: ScrapeConfig
-    ) -> AsyncIterator[DiscoveredUrl]:
+    async def discover(self, config: ScrapeConfig) -> AsyncIterator[DiscoveredUrl]:
         """Discover URLs from llms.txt file.
 
         Args:
@@ -40,9 +38,7 @@ class LlmsTxtDiscovery(DiscoveryStrategy):
         Yields:
             DiscoveredUrl objects for each found URL.
         """
-        llms_txt_url = urljoin(
-            config.base_url.rstrip("/") + "/", self._llms_txt_path.lstrip("/")
-        )
+        llms_txt_url = urljoin(config.base_url.rstrip("/") + "/", self._llms_txt_path.lstrip("/"))
 
         if config.verbose:
             print(f"Fetching llms.txt from {llms_txt_url}...")
@@ -68,13 +64,15 @@ class LlmsTxtDiscovery(DiscoveryStrategy):
 
         for url_info in urls:
             # Apply include/exclude filters
-            if config.include_patterns:
-                if not any(re.search(p, url_info.url) for p in config.include_patterns):
-                    continue
+            if config.include_patterns and not any(
+                re.search(p, url_info.url) for p in config.include_patterns
+            ):
+                continue
 
-            if config.exclude_patterns:
-                if any(re.search(p, url_info.url) for p in config.exclude_patterns):
-                    continue
+            if config.exclude_patterns and any(
+                re.search(p, url_info.url) for p in config.exclude_patterns
+            ):
+                continue
 
             yield url_info
 
@@ -92,9 +90,7 @@ class LlmsTxtDiscovery(DiscoveryStrategy):
         base_url = base_url.rstrip("/")
 
         # Pattern for absolute URLs
-        abs_url_pattern = re.compile(
-            rf'{re.escape(base_url)}[^\s\)\]>"\']+(?:\.md|\.html|/)?'
-        )
+        abs_url_pattern = re.compile(rf'{re.escape(base_url)}[^\s\)\]>"\']+(?:\.md|\.html|/)?')
 
         # Pattern for markdown links: [title](url)
         link_pattern = re.compile(r"\[([^\]]+)\]\(([^\)]+)\)")
@@ -159,8 +155,4 @@ class LlmsTxtDiscovery(DiscoveryStrategy):
             "/_next/",
             "/images/",
         ]
-        for pattern in skip_patterns:
-            if pattern in url:
-                return False
-
-        return True
+        return all(pattern not in url for pattern in skip_patterns)

@@ -4,7 +4,7 @@ from dataclasses import dataclass, field
 from datetime import datetime
 from enum import Enum
 from pathlib import Path
-from typing import Any, Optional
+from typing import Any
 
 
 class ScrapeStatus(Enum):
@@ -40,7 +40,7 @@ class DiscoveredUrl:
     """A URL discovered during the discovery phase."""
 
     url: str
-    title: Optional[str] = None
+    title: str | None = None
     priority: int = 0  # Higher = more important
     metadata: dict[str, Any] = field(default_factory=dict)
 
@@ -60,8 +60,8 @@ class DocumentPage:
     url: str
     title: str
     content_markdown: str
-    content_html: Optional[str] = None
-    filepath: Optional[Path] = None
+    content_html: str | None = None
+    filepath: Path | None = None
     scraped_at: datetime = field(default_factory=datetime.utcnow)
     word_count: int = 0
     links: list[str] = field(default_factory=list)
@@ -78,8 +78,8 @@ class CrawlResult:
 
     url: str
     status: ScrapeStatus
-    page: Optional[DocumentPage] = None
-    error: Optional[str] = None
+    page: DocumentPage | None = None
+    error: str | None = None
     duration_ms: float = 0.0
 
 
@@ -91,7 +91,7 @@ class ScrapeManifest:
     base_url: str
     output_dir: str
     started_at: datetime
-    completed_at: Optional[datetime] = None
+    completed_at: datetime | None = None
     total_urls: int = 0
     successful: int = 0
     failed: int = 0
@@ -126,9 +126,7 @@ class ScrapeManifest:
             output_dir=data["output_dir"],
             started_at=datetime.fromisoformat(data["started_at"]),
             completed_at=(
-                datetime.fromisoformat(data["completed_at"])
-                if data.get("completed_at")
-                else None
+                datetime.fromisoformat(data["completed_at"]) if data.get("completed_at") else None
             ),
             total_urls=data.get("stats", {}).get("total_urls", 0),
             successful=data.get("stats", {}).get("successful", 0),

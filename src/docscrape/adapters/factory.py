@@ -1,7 +1,5 @@
 """Factory for creating platform adapters."""
 
-from typing import Optional
-
 from docscrape.core.interfaces import PlatformAdapter
 
 
@@ -9,7 +7,7 @@ class PlatformAdapterFactory:
     """Factory for creating platform-specific adapters."""
 
     # Registry of known platforms (lazy-loaded to avoid circular imports)
-    _PLATFORMS: Optional[dict[str, type[PlatformAdapter]]] = None
+    _PLATFORMS: dict[str, type[PlatformAdapter]] | None = None
 
     # URL patterns to auto-detect platform
     _URL_PATTERNS: dict[str, str] = {
@@ -39,8 +37,8 @@ class PlatformAdapterFactory:
     @classmethod
     def get_adapter(
         cls,
-        platform: Optional[str] = None,
-        url: Optional[str] = None,
+        platform: str | None = None,
+        url: str | None = None,
     ) -> PlatformAdapter:
         """Get a platform adapter.
 
@@ -85,7 +83,7 @@ class PlatformAdapterFactory:
         cls,
         name: str,
         adapter_class: type[PlatformAdapter],
-        url_patterns: Optional[list[str]] = None,
+        url_patterns: list[str] | None = None,
     ) -> None:
         """Register a new platform adapter.
 

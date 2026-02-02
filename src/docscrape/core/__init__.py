@@ -1,5 +1,10 @@
 """Core models and interfaces for docscrape."""
 
+from docscrape.core.interfaces import (
+    DiscoveryStrategy,
+    PlatformAdapter,
+    StorageBackend,
+)
 from docscrape.core.models import (
     CrawlResult,
     DiscoveredUrl,
@@ -7,11 +12,6 @@ from docscrape.core.models import (
     ScrapeConfig,
     ScrapeManifest,
     ScrapeStatus,
-)
-from docscrape.core.interfaces import (
-    DiscoveryStrategy,
-    PlatformAdapter,
-    StorageBackend,
 )
 
 __all__ = [

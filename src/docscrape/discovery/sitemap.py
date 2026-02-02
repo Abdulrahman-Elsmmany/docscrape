@@ -1,8 +1,9 @@
 """Discovery strategy using sitemap.xml files."""
 
+import contextlib
 import re
 import xml.etree.ElementTree as ET
-from typing import AsyncIterator, Optional
+from collections.abc import AsyncIterator
 from urllib.parse import urljoin
 
 import httpx
@@ -17,7 +18,7 @@ class SitemapDiscovery(DiscoveryStrategy):
     # XML namespace for sitemaps
     SITEMAP_NS = {"sm": "http://www.sitemaps.org/schemas/sitemap/0.9"}
 
-    def __init__(self, sitemap_paths: Optional[list[str]] = None) -> None:
+    def __init__(self, sitemap_paths: list[str] | None = None) -> None:
         """Initialize the discovery strategy.
 
         Args:
@@ -30,9 +31,7 @@ class SitemapDiscovery(DiscoveryStrategy):
     def name(self) -> str:
         return "sitemap"
 
-    async def discover(
-        self, config: ScrapeConfig
-    ) -> AsyncIterator[DiscoveredUrl]:
+    async def discover(self, config: ScrapeConfig) -> AsyncIterator[DiscoveredUrl]:
         """Discover URLs from sitemap.xml.
 
         Args:
@@ -58,9 +57,7 @@ class SitemapDiscovery(DiscoveryStrategy):
                         follow_redirects=True,
                     )
                     if response.status_code == 200:
-                        urls = await self._parse_sitemap(
-                            client, response.text, base_url, config
-                        )
+                        urls = await self._parse_sitemap(client, response.text, base_url, config)
                         for url in urls:
                             yield url
                         return  # Found a working sitemap
@@ -126,22 +123,22 @@ class SitemapDiscovery(DiscoveryStrategy):
                         continue
 
                     # Apply include/exclude filters
-                    if config.include_patterns:
-                        if not any(re.search(p, url) for p in config.include_patterns):
-                            continue
+                    if config.include_patterns and not any(
+                        re.search(p, url) for p in config.include_patterns
+                    ):
+                        continue
 
-                    if config.exclude_patterns:
-                        if any(re.search(p, url) for p in config.exclude_patterns):
-                            continue
+                    if config.exclude_patterns and any(
+                        re.search(p, url) for p in config.exclude_patterns
+                    ):
+                        continue
 
                     # Extract priority if available
                     priority_elem = url_elem.find("sm:priority", self.SITEMAP_NS)
                     priority = 0
                     if priority_elem is not None and priority_elem.text:
-                        try:
+                        with contextlib.suppress(ValueError):
                             priority = int(float(priority_elem.text) * 100)
-                        except ValueError:
-                            pass
 
                     urls.append(
                         DiscoveredUrl(
@@ -159,7 +156,7 @@ class SitemapDiscovery(DiscoveryStrategy):
 
         return urls
 
-    def _get_text(self, elem: ET.Element, tag: str) -> Optional[str]:
+    def _get_text(self, elem: ET.Element, tag: str) -> str | None:
         """Get text from a child element."""
         child = elem.find(f"sm:{tag}", self.SITEMAP_NS)
         return child.text if child is not None else None

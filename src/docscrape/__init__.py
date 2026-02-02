@@ -12,6 +12,11 @@ Usage:
 __version__ = "0.2.0"
 __author__ = "Abdulrahman Elsmmany"
 
+from docscrape.core.interfaces import (
+    DiscoveryStrategy,
+    PlatformAdapter,
+    StorageBackend,
+)
 from docscrape.core.models import (
     CrawlResult,
     DiscoveredUrl,
@@ -19,11 +24,6 @@ from docscrape.core.models import (
     ScrapeConfig,
     ScrapeManifest,
     ScrapeStatus,
-)
-from docscrape.core.interfaces import (
-    DiscoveryStrategy,
-    PlatformAdapter,
-    StorageBackend,
 )
 
 __all__ = [

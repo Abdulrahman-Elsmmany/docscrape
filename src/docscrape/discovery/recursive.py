@@ -3,7 +3,7 @@
 import asyncio
 import re
 from collections import deque
-from typing import AsyncIterator, Optional
+from collections.abc import AsyncIterator
 from urllib.parse import ParseResult, urljoin, urlparse
 
 import httpx
@@ -19,7 +19,7 @@ class RecursiveCrawlDiscovery(DiscoveryStrategy):
     def __init__(
         self,
         max_depth: int = 5,
-        content_selector: Optional[str] = None,
+        content_selector: str | None = None,
     ) -> None:
         """Initialize the discovery strategy.
 
@@ -34,9 +34,7 @@ class RecursiveCrawlDiscovery(DiscoveryStrategy):
     def name(self) -> str:
         return "recursive"
 
-    async def discover(
-        self, config: ScrapeConfig
-    ) -> AsyncIterator[DiscoveredUrl]:
+    async def discover(self, config: ScrapeConfig) -> AsyncIterator[DiscoveredUrl]:
         """Discover URLs by crawling links recursively.
 
         Args:
@@ -127,14 +125,12 @@ class RecursiveCrawlDiscovery(DiscoveryStrategy):
             return False
 
         # Apply include filters
-        if config.include_patterns:
-            if not any(re.search(p, url) for p in config.include_patterns):
-                return False
+        if config.include_patterns and not any(re.search(p, url) for p in config.include_patterns):
+            return False
 
         # Apply exclude filters
-        if config.exclude_patterns:
-            if any(re.search(p, url) for p in config.exclude_patterns):
-                return False
+        if config.exclude_patterns and any(re.search(p, url) for p in config.exclude_patterns):
+            return False
 
         # Skip common non-doc paths
         skip_patterns = [
@@ -145,13 +141,9 @@ class RecursiveCrawlDiscovery(DiscoveryStrategy):
             r"/images/",
             r"\.(png|jpg|gif|svg|css|js|woff|ttf)$",
         ]
-        for pattern in skip_patterns:
-            if re.search(pattern, url, re.IGNORECASE):
-                return False
+        return all(not re.search(pattern, url, re.IGNORECASE) for pattern in skip_patterns)
 
-        return True
-
-    def _extract_title(self, html: str) -> Optional[str]:
+    def _extract_title(self, html: str) -> str | None:
         """Extract the page title from HTML."""
         soup = BeautifulSoup(html, "html.parser")
 
@@ -165,9 +157,7 @@ class RecursiveCrawlDiscovery(DiscoveryStrategy):
 
         return None
 
-    def _extract_links(
-        self, html: str, current_url: str, parsed_base: ParseResult
-    ) -> list[str]:
+    def _extract_links(self, html: str, current_url: str, parsed_base: ParseResult) -> list[str]:
         """Extract links from HTML content."""
         soup = BeautifulSoup(html, "html.parser")
 

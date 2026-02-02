@@ -2,7 +2,7 @@
 
 import json
 from pathlib import Path
-from typing import Any, Optional
+from typing import Any
 
 from docscrape.core.interfaces import StorageBackend
 from docscrape.core.models import DocumentPage, ScrapeManifest
@@ -30,7 +30,7 @@ class FilesystemStorage(StorageBackend):
         # Write file
         filepath.write_text(content, encoding="utf-8")
 
-    async def load_manifest(self, output_dir: Path) -> Optional[ScrapeManifest]:
+    async def load_manifest(self, output_dir: Path) -> ScrapeManifest | None:
         """Load an existing manifest.
 
         Args:
@@ -113,9 +113,7 @@ class FilesystemStorage(StorageBackend):
 
         return "\n".join(lines)
 
-    async def _generate_index(
-        self, manifest: ScrapeManifest, output_dir: Path
-    ) -> None:
+    async def _generate_index(self, manifest: ScrapeManifest, output_dir: Path) -> None:
         """Generate a human-readable index file.
 
         Args:

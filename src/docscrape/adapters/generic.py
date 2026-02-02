@@ -2,7 +2,6 @@
 
 import re
 from pathlib import Path
-from typing import Optional
 from urllib.parse import urlparse
 
 from bs4 import BeautifulSoup
@@ -19,8 +18,8 @@ class GenericAdapter(PlatformAdapter):
     def __init__(
         self,
         base_url: str,
-        content_selectors: Optional[list[str]] = None,
-        skip_selectors: Optional[list[str]] = None,
+        content_selectors: list[str] | None = None,
+        skip_selectors: list[str] | None = None,
     ) -> None:
         """Initialize the adapter.
 
@@ -144,9 +143,7 @@ class GenericAdapter(PlatformAdapter):
 
         return output_dir / path
 
-    def _extract_title(
-        self, soup: BeautifulSoup, markdown: Optional[str] = None
-    ) -> Optional[str]:
+    def _extract_title(self, soup: BeautifulSoup, markdown: str | None = None) -> str | None:
         """Extract page title."""
         # Try meta title
         meta_title = soup.find("meta", property="og:title")
@@ -203,7 +200,7 @@ class GenericAdapter(PlatformAdapter):
 
         return links
 
-    def _detect_language(self, elem: BeautifulSoup) -> Optional[str]:
+    def _detect_language(self, elem: BeautifulSoup) -> str | None:
         """Detect code language from element classes."""
         if not elem:
             return None

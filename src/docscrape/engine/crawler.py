@@ -6,8 +6,8 @@ using httpx for async HTTP requests and BeautifulSoup for HTML parsing.
 
 import asyncio
 import time
+from collections.abc import AsyncIterator
 from datetime import datetime
-from typing import AsyncIterator, Optional
 
 import httpx
 from rich.console import Console
@@ -20,8 +20,6 @@ from rich.progress import (
     TimeElapsedColumn,
 )
 
-console = Console()
-
 from docscrape.core.interfaces import PlatformAdapter, StorageBackend
 from docscrape.core.models import (
     CrawlResult,
@@ -31,6 +29,8 @@ from docscrape.core.models import (
     ScrapeManifest,
     ScrapeStatus,
 )
+
+console = Console()
 
 
 class DocumentationCrawler:
@@ -52,7 +52,7 @@ class DocumentationCrawler:
         self._adapter = adapter
         self._storage = storage
         self._config = config
-        self._manifest: Optional[ScrapeManifest] = None
+        self._manifest: ScrapeManifest | None = None
         self._completed_urls: set[str] = set()
 
     async def crawl(self) -> ScrapeManifest:
@@ -74,9 +74,9 @@ class DocumentationCrawler:
         """Run crawl without progress bar (quiet mode)."""
         # Discover URLs
         if self._config.verbose:
-            print(f"\n{'='*60}")
+            print(f"\n{'=' * 60}")
             print(f"Discovering URLs from {self._config.base_url}")
-            print(f"{'='*60}\n")
+            print(f"{'=' * 60}\n")
 
         urls = await self._discover_urls()
 
@@ -100,7 +100,7 @@ class DocumentationCrawler:
 
         if self._config.verbose:
             print(f"\nWill crawl {len(urls)} URLs")
-            print(f"{'='*60}\n")
+            print(f"{'=' * 60}\n")
 
         # Crawl URLs
         async for result in self._crawl_urls(urls):
@@ -124,14 +124,12 @@ class DocumentationCrawler:
             transient=True,
         ) as progress:
             # Discovery phase
-            discovery_task = progress.add_task(
-                "[cyan]Discovering URLs...", total=None
-            )
+            discovery_task = progress.add_task("[cyan]Discovering URLs...", total=None)
 
             if self._config.verbose:
-                console.print(f"\n{'='*60}")
+                console.print(f"\n{'=' * 60}")
                 console.print(f"Discovering URLs from {self._config.base_url}")
-                console.print(f"{'='*60}\n")
+                console.print(f"{'=' * 60}\n")
 
             urls = await self._discover_urls()
             progress.remove_task(discovery_task)
@@ -156,7 +154,7 @@ class DocumentationCrawler:
 
             if self._config.verbose:
                 console.print(f"\nWill crawl {len(urls)} URLs")
-                console.print(f"{'='*60}\n")
+                console.print(f"{'=' * 60}\n")
 
             # Crawl phase with progress bar
             crawl_task = progress.add_task(
@@ -181,9 +179,7 @@ class DocumentationCrawler:
                 self._manifest = existing
                 self._completed_urls = self._storage.get_completed_urls(existing)
                 if self._config.verbose:
-                    print(
-                        f"Resuming from existing manifest ({len(self._completed_urls)} pages)"
-                    )
+                    print(f"Resuming from existing manifest ({len(self._completed_urls)} pages)")
                 return
 
         # Create new manifest
@@ -219,9 +215,7 @@ class DocumentationCrawler:
         if not urls and hasattr(self._adapter, "get_fallback_strategy"):
             fallback = self._adapter.get_fallback_strategy()
             if self._config.verbose:
-                print(
-                    f"Primary strategy found no URLs, trying fallback: {fallback.name}"
-                )
+                print(f"Primary strategy found no URLs, trying fallback: {fallback.name}")
 
             async for url in fallback.discover(self._config):
                 if self._adapter.should_skip(url.url):
@@ -236,8 +230,8 @@ class DocumentationCrawler:
     async def _crawl_urls(
         self,
         urls: list[DiscoveredUrl],
-        progress: Optional[Progress] = None,
-        task_id: Optional[int] = None,
+        progress: Progress | None = None,
+        task_id: int | None = None,
     ) -> AsyncIterator[CrawlResult]:
         """Crawl a list of URLs.
 
@@ -309,9 +303,7 @@ class DocumentationCrawler:
         # Keep the last part of the URL (path)
         return "..." + url[-(max_len - 3) :]
 
-    async def _fetch_and_extract(
-        self, client: httpx.AsyncClient, url: str
-    ) -> DocumentPage:
+    async def _fetch_and_extract(self, client: httpx.AsyncClient, url: str) -> DocumentPage:
         """Fetch a URL and extract content.
 
         Args:
@@ -322,7 +314,7 @@ class DocumentationCrawler:
             Extracted DocumentPage.
         """
         # Retry logic
-        last_error: Optional[Exception] = None
+        last_error: Exception | None = None
 
         for attempt in range(self._config.max_retries):
             try:
@@ -333,9 +325,7 @@ class DocumentationCrawler:
                 page = self._adapter.extract_content(html, url)
 
                 # Set filepath
-                page.filepath = self._adapter.url_to_filepath(
-                    url, self._config.output_dir
-                )
+                page.filepath = self._adapter.url_to_filepath(url, self._config.output_dir)
 
                 return page
 
@@ -389,5 +379,6 @@ class DocumentationCrawler:
         # Periodically save manifest for resume support
         if (self._manifest.successful + self._manifest.failed) % 10 == 0:  # type: ignore
             await self._storage.save_manifest(
-                self._manifest, self._config.output_dir  # type: ignore
+                self._manifest,
+                self._config.output_dir,  # type: ignore
             )

@@ -1,8 +1,8 @@
 """Abstract interfaces for docscrape."""
 
 from abc import ABC, abstractmethod
+from collections.abc import AsyncIterator
 from pathlib import Path
-from typing import AsyncIterator, Optional
 
 from docscrape.core.models import (
     DiscoveredUrl,
@@ -16,9 +16,7 @@ class DiscoveryStrategy(ABC):
     """Abstract base class for URL discovery strategies."""
 
     @abstractmethod
-    async def discover(
-        self, config: ScrapeConfig
-    ) -> AsyncIterator[DiscoveredUrl]:
+    async def discover(self, config: ScrapeConfig) -> AsyncIterator[DiscoveredUrl]:
         """Discover URLs to scrape.
 
         Args:
@@ -119,7 +117,7 @@ class StorageBackend(ABC):
         ...
 
     @abstractmethod
-    async def load_manifest(self, output_dir: Path) -> Optional[ScrapeManifest]:
+    async def load_manifest(self, output_dir: Path) -> ScrapeManifest | None:
         """Load an existing manifest.
 
         Args:

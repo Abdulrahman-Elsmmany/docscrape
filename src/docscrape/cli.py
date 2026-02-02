@@ -4,7 +4,7 @@ import asyncio
 import re
 import sys
 from pathlib import Path
-from typing import Annotated, Optional
+from typing import Annotated
 from urllib.parse import urlparse
 
 import typer
@@ -46,10 +46,7 @@ def _derive_output_from_url(url: str) -> Path:
 
     # Extract the main domain name (before .com, .io, .ai, etc.)
     match = re.match(r"^([a-zA-Z0-9-]+)", domain)
-    if match:
-        name = match.group(1).lower()
-    else:
-        name = "docs"
+    name = match.group(1).lower() if match else "docs"
 
     return Path(f"./{name}/")
 
@@ -101,23 +98,23 @@ async def _run_crawler(adapter, config: ScrapeConfig) -> None:
 
     except KeyboardInterrupt:
         console.print("\n[yellow]Interrupted. Progress saved for resume.[/yellow]")
-        raise typer.Exit(1)
+        raise typer.Exit(1) from None
 
     except Exception as e:
         console.print(f"\n[red]Error: {e}[/red]")
-        raise typer.Exit(1)
+        raise typer.Exit(1) from e
 
 
 def _scrape(
     url: str,
-    output: Optional[Path],
+    output: Path | None,
     max_pages: int,
     delay: float,
     resume: bool,
     verbose: bool,
     quiet: bool,
-    include: Optional[list[str]],
-    exclude: Optional[list[str]],
+    include: list[str] | None,
+    exclude: list[str] | None,
 ) -> None:
     """Execute the scrape operation."""
     # Validate URL
@@ -188,12 +185,10 @@ app = typer.Typer(
 def scrape(
     url: Annotated[
         str,
-        typer.Argument(
-            help="Documentation URL to scrape (e.g., https://docs.pipecat.ai)"
-        ),
+        typer.Argument(help="Documentation URL to scrape (e.g., https://docs.pipecat.ai)"),
     ],
     output: Annotated[
-        Optional[Path],
+        Path | None,
         typer.Option(
             "-o",
             "--output",
@@ -241,7 +236,7 @@ def scrape(
         ),
     ] = False,
     include: Annotated[
-        Optional[list[str]],
+        list[str] | None,
         typer.Option(
             "-i",
             "--include",
@@ -249,7 +244,7 @@ def scrape(
         ),
     ] = None,
     exclude: Annotated[
-        Optional[list[str]],
+        list[str] | None,
         typer.Option(
             "-e",
             "--exclude",

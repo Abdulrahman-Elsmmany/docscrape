@@ -69,10 +69,7 @@ class LiveKitAdapter(GenericAdapter):
             return True
 
         # Skip changelog
-        if "/changelog" in url:
-            return True
-
-        return False
+        return "/changelog" in url
 
     def get_url_priority(self, url: str) -> int:
         """Get priority for URL ordering."""
