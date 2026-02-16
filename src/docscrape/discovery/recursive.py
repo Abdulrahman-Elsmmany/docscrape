@@ -7,7 +7,7 @@ from collections.abc import AsyncIterator
 from urllib.parse import ParseResult, urljoin, urlparse
 
 import httpx
-from bs4 import BeautifulSoup
+from bs4 import BeautifulSoup, Tag
 
 from docscrape.core.interfaces import DiscoveryStrategy
 from docscrape.core.models import DiscoveredUrl, ScrapeConfig
@@ -162,15 +162,16 @@ class RecursiveCrawlDiscovery(DiscoveryStrategy):
         soup = BeautifulSoup(html, "html.parser")
 
         # If a content selector is specified, only look for links there
+        search_scope: Tag | BeautifulSoup = soup
         if self._content_selector:
             content = soup.select_one(self._content_selector)
             if content:
-                soup = content
+                search_scope = content
 
         links: list[str] = []
 
-        for a in soup.find_all("a", href=True):
-            href = a["href"]
+        for a in search_scope.find_all("a", href=True):
+            href = str(a["href"])
 
             # Skip javascript, mailto, tel links
             if href.startswith(("javascript:", "mailto:", "tel:", "#")):

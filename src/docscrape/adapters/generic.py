@@ -4,7 +4,7 @@ import re
 from pathlib import Path
 from urllib.parse import urlparse
 
-from bs4 import BeautifulSoup
+from bs4 import BeautifulSoup, Tag
 from markdownify import markdownify as md
 
 from docscrape.core.interfaces import DiscoveryStrategy, PlatformAdapter
@@ -178,13 +178,13 @@ class GenericAdapter(PlatformAdapter):
 
         return None
 
-    def _extract_links(self, content: BeautifulSoup, current_url: str) -> list[str]:
+    def _extract_links(self, content: Tag, current_url: str) -> list[str]:
         """Extract internal links from content."""
         links = []
         base_domain = urlparse(current_url).netloc
 
         for a in content.find_all("a", href=True):
-            href = a["href"]
+            href = str(a["href"])
 
             # Skip anchors and non-http links
             if href.startswith(("#", "javascript:", "mailto:")):
@@ -205,12 +205,13 @@ class GenericAdapter(PlatformAdapter):
 
         return links
 
-    def _detect_language(self, elem: BeautifulSoup) -> str | None:
+    def _detect_language(self, elem: Tag) -> str | None:
         """Detect code language from element classes."""
         if not elem:
             return None
 
-        classes = elem.get("class", [])
+        raw_classes = elem.get("class")
+        classes: list[str] = raw_classes if isinstance(raw_classes, list) else []
         for cls in classes:
             if cls.startswith("language-"):
                 return cls[9:]

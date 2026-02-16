@@ -14,6 +14,7 @@ from rich.table import Table
 
 from docscrape import __version__
 from docscrape.adapters.factory import PlatformAdapterFactory
+from docscrape.core.interfaces import PlatformAdapter
 from docscrape.core.models import ScrapeConfig
 from docscrape.engine.crawler import DocumentationCrawler
 from docscrape.storage.filesystem import FilesystemStorage
@@ -51,7 +52,7 @@ def _derive_output_from_url(url: str) -> Path:
     return Path(f"./{name}/")
 
 
-async def _run_crawler(adapter, config: ScrapeConfig) -> None:
+async def _run_crawler(adapter: PlatformAdapter, config: ScrapeConfig) -> None:
     """Run the crawler asynchronously."""
     storage = FilesystemStorage()
     crawler = DocumentationCrawler(adapter, storage, config)

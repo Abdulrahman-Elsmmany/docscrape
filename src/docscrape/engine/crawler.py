@@ -15,6 +15,7 @@ from rich.progress import (
     BarColumn,
     Progress,
     SpinnerColumn,
+    TaskID,
     TaskProgressColumn,
     TextColumn,
     TimeElapsedColumn,
@@ -233,7 +234,7 @@ class DocumentationCrawler:
         self,
         urls: list[DiscoveredUrl],
         progress: Progress | None = None,
-        task_id: int | None = None,
+        task_id: TaskID | None = None,
     ) -> AsyncIterator[CrawlResult]:
         """Crawl a list of URLs concurrently.
 
@@ -389,8 +390,9 @@ class DocumentationCrawler:
             )
 
         # Periodically save manifest for resume support
-        if (self._manifest.successful + self._manifest.failed) % 10 == 0:  # type: ignore
+        assert self._manifest is not None
+        if (self._manifest.successful + self._manifest.failed) % 10 == 0:
             await self._storage.save_manifest(
                 self._manifest,
-                self._config.output_dir,  # type: ignore
+                self._config.output_dir,
             )

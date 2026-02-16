@@ -16,7 +16,7 @@ class DiscoveryStrategy(ABC):
     """Abstract base class for URL discovery strategies."""
 
     @abstractmethod
-    async def discover(self, config: ScrapeConfig) -> AsyncIterator[DiscoveredUrl]:
+    def discover(self, config: ScrapeConfig) -> AsyncIterator[DiscoveredUrl]:
         """Discover URLs to scrape.
 
         Args:
