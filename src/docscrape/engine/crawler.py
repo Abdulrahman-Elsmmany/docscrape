@@ -32,6 +32,8 @@ from docscrape.core.models import (
 
 console = Console()
 
+_MAX_CONCURRENCY = 5
+
 
 class DocumentationCrawler:
     """Crawler for documentation websites."""
@@ -233,7 +235,7 @@ class DocumentationCrawler:
         progress: Progress | None = None,
         task_id: int | None = None,
     ) -> AsyncIterator[CrawlResult]:
-        """Crawl a list of URLs.
+        """Crawl a list of URLs concurrently.
 
         Args:
             urls: URLs to crawl.
@@ -244,22 +246,13 @@ class DocumentationCrawler:
             CrawlResult for each URL.
         """
         total = len(urls)
+        sem = asyncio.Semaphore(_MAX_CONCURRENCY)
+        queue: asyncio.Queue[CrawlResult] = asyncio.Queue()
 
-        async with httpx.AsyncClient(
-            timeout=self._config.timeout,
-            follow_redirects=True,
-        ) as client:
-            for i, discovered in enumerate(urls, 1):
+        async def fetch_one(i: int, discovered: DiscoveredUrl) -> None:
+            async with sem:
                 url = discovered.url
                 start_time = time.time()
-
-                # Update progress bar with truncated URL
-                if progress is not None and task_id is not None:
-                    truncated_url = self._truncate_url(url, max_len=50)
-                    progress.update(
-                        task_id,
-                        description=f"[green]Crawling:[/green] {truncated_url}",
-                    )
 
                 if self._config.verbose:
                     print(f"[{i}/{total}] Crawling: {url}")
@@ -267,34 +260,53 @@ class DocumentationCrawler:
                 try:
                     page = await self._fetch_and_extract(client, url)
                     duration = (time.time() - start_time) * 1000
-
-                    yield CrawlResult(
-                        url=url,
-                        status=ScrapeStatus.SUCCESS,
-                        page=page,
-                        duration_ms=duration,
+                    await queue.put(
+                        CrawlResult(
+                            url=url,
+                            status=ScrapeStatus.SUCCESS,
+                            page=page,
+                            duration_ms=duration,
+                        )
                     )
-
                 except Exception as e:
                     duration = (time.time() - start_time) * 1000
                     error_msg = str(e)
-
                     if self._config.verbose:
                         print(f"  -> FAILED: {error_msg}")
-
-                    yield CrawlResult(
-                        url=url,
-                        status=ScrapeStatus.FAILED,
-                        error=error_msg,
-                        duration_ms=duration,
+                    await queue.put(
+                        CrawlResult(
+                            url=url,
+                            status=ScrapeStatus.FAILED,
+                            error=error_msg,
+                            duration_ms=duration,
+                        )
                     )
-
-                # Advance progress bar
-                if progress is not None and task_id is not None:
-                    progress.advance(task_id)
 
                 # Rate limiting
                 await asyncio.sleep(self._config.request_delay)
+
+        async with httpx.AsyncClient(
+            timeout=self._config.timeout,
+            follow_redirects=True,
+        ) as client:
+            tasks = [asyncio.create_task(fetch_one(i, d)) for i, d in enumerate(urls, 1)]
+
+            for _ in range(len(urls)):
+                result = await queue.get()
+
+                # Update progress bar
+                if progress is not None and task_id is not None:
+                    truncated_url = self._truncate_url(result.url, max_len=50)
+                    progress.update(
+                        task_id,
+                        description=f"[green]Crawling:[/green] {truncated_url}",
+                    )
+                    progress.advance(task_id)
+
+                yield result
+
+            # Ensure all tasks complete (handles any exceptions)
+            await asyncio.gather(*tasks)
 
     def _truncate_url(self, url: str, max_len: int = 50) -> str:
         """Truncate URL for display in progress bar."""

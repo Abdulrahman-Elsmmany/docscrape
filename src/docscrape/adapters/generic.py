@@ -9,6 +9,7 @@ from markdownify import markdownify as md
 
 from docscrape.core.interfaces import DiscoveryStrategy, PlatformAdapter
 from docscrape.core.models import DocumentPage
+from docscrape.discovery.recursive import RecursiveCrawlDiscovery
 from docscrape.discovery.sitemap import SitemapDiscovery
 
 
@@ -65,6 +66,10 @@ class GenericAdapter(PlatformAdapter):
     def get_discovery_strategy(self) -> DiscoveryStrategy:
         """Return sitemap discovery as the default strategy."""
         return SitemapDiscovery()
+
+    def get_fallback_strategy(self) -> DiscoveryStrategy:
+        """Return recursive crawl as fallback when sitemap discovery fails."""
+        return RecursiveCrawlDiscovery(max_depth=3, content_selector="main")
 
     def extract_content(self, html: str, url: str) -> DocumentPage:
         """Extract content from HTML.

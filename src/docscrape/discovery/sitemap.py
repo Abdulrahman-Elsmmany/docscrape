@@ -4,7 +4,7 @@ import contextlib
 import re
 import xml.etree.ElementTree as ET
 from collections.abc import AsyncIterator
-from urllib.parse import urljoin
+from urllib.parse import urljoin, urlparse
 
 import httpx
 
@@ -42,8 +42,12 @@ class SitemapDiscovery(DiscoveryStrategy):
         """
         base_url = config.base_url.rstrip("/")
 
+        parsed = urlparse(base_url)
+        domain_root = f"{parsed.scheme}://{parsed.netloc}"
+        has_deep_path = parsed.path.strip("/") != ""
+
         async with httpx.AsyncClient() as client:
-            # Try each sitemap path
+            # Try each sitemap path relative to base_url
             for path in self._sitemap_paths:
                 sitemap_url = urljoin(base_url + "/", path.lstrip("/"))
 
@@ -64,6 +68,32 @@ class SitemapDiscovery(DiscoveryStrategy):
                 except httpx.HTTPError as e:
                     if config.verbose:
                         print(f"Failed to fetch {sitemap_url}: {e}")
+
+            # Fallback: try sitemap at domain root for deep-path base URLs
+            if has_deep_path:
+                for path in self._sitemap_paths:
+                    sitemap_url = urljoin(domain_root + "/", path.lstrip("/"))
+
+                    if config.verbose:
+                        print(f"Trying domain-root sitemap at {sitemap_url}...")
+
+                    try:
+                        response = await client.get(
+                            sitemap_url,
+                            timeout=config.timeout,
+                            follow_redirects=True,
+                        )
+                        if response.status_code == 200:
+                            urls = await self._parse_sitemap(
+                                client, response.text, base_url, config
+                            )
+                            if urls:
+                                for url in urls:
+                                    yield url
+                                return  # Found matching URLs in domain-root sitemap
+                    except httpx.HTTPError as e:
+                        if config.verbose:
+                            print(f"Failed to fetch {sitemap_url}: {e}")
 
     async def _parse_sitemap(
         self,
