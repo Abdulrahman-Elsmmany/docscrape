@@ -12,6 +12,8 @@ from docscrape.core.models import DocumentPage
 from docscrape.discovery.recursive import RecursiveCrawlDiscovery
 from docscrape.discovery.sitemap import SitemapDiscovery
 
+MIN_CONTENT_CHARS = 200
+
 
 class GenericAdapter(PlatformAdapter):
     """Generic adapter that works with most documentation sites."""
@@ -31,14 +33,16 @@ class GenericAdapter(PlatformAdapter):
         """
         self._base_url = base_url.rstrip("/")
         self._content_selectors = content_selectors or [
-            "article",
-            "main",
-            ".markdown-body",
-            ".content",
-            ".documentation",
-            ".docs-content",
-            "#content",
-            "#main-content",
+            "#content",  # Mintlify and many doc platforms
+            ".mdx-content",  # Mintlify MDX content
+            "#main-content",  # Common pattern
+            "article",  # Standard HTML5
+            "main",  # Standard HTML5
+            ".markdown-body",  # GitHub-style
+            ".content",  # Generic
+            ".documentation",  # Generic
+            ".docs-content",  # Generic
+            ".prose",  # Tailwind - LAST (matches many elements)
         ]
         self._skip_selectors = skip_selectors or [
             "nav",
@@ -51,6 +55,7 @@ class GenericAdapter(PlatformAdapter):
             ".breadcrumb",
             ".edit-page",
             ".feedback",
+            ".copy-button",
             "script",
             "style",
         ]
@@ -69,7 +74,7 @@ class GenericAdapter(PlatformAdapter):
 
     def get_fallback_strategy(self) -> DiscoveryStrategy:
         """Return recursive crawl as fallback when sitemap discovery fails."""
-        return RecursiveCrawlDiscovery(max_depth=3, content_selector="main")
+        return RecursiveCrawlDiscovery(max_depth=5, content_selector="main")
 
     def extract_content(self, html: str, url: str) -> DocumentPage:
         """Extract content from HTML.
@@ -88,12 +93,16 @@ class GenericAdapter(PlatformAdapter):
             for elem in soup.select(selector):
                 elem.decompose()
 
-        # Find content area
+        # Find content area (prefer elements with substantial text)
         content_elem = None
         for selector in self._content_selectors:
-            content_elem = soup.select_one(selector)
-            if content_elem:
-                break
+            candidate = soup.select_one(selector)
+            if candidate:
+                if len(candidate.get_text(strip=True)) >= MIN_CONTENT_CHARS:
+                    content_elem = candidate
+                    break
+                elif content_elem is None:
+                    content_elem = candidate  # fallback to first match
 
         if not content_elem:
             content_elem = soup.body or soup

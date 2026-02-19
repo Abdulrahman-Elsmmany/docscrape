@@ -2,7 +2,6 @@
 
 import asyncio
 import re
-import sys
 from pathlib import Path
 from typing import Annotated
 from urllib.parse import urlparse
@@ -10,10 +9,9 @@ from urllib.parse import urlparse
 import typer
 from rich.console import Console
 from rich.panel import Panel
-from rich.table import Table
 
 from docscrape import __version__
-from docscrape.adapters.factory import PlatformAdapterFactory
+from docscrape.adapters.generic import GenericAdapter
 from docscrape.core.interfaces import PlatformAdapter
 from docscrape.core.models import ScrapeConfig
 from docscrape.engine.crawler import DocumentationCrawler
@@ -126,8 +124,8 @@ def _scrape(
     if output is None:
         output = _derive_output_from_url(url)
 
-    # Get adapter (auto-detect platform or use generic)
-    adapter = PlatformAdapterFactory.get_adapter(url=url)
+    # Create generic adapter
+    adapter = GenericAdapter(base_url=url)
 
     # Create config
     config = ScrapeConfig(
@@ -145,32 +143,6 @@ def _scrape(
 
     # Run crawler
     asyncio.run(_run_crawler(adapter, config))
-
-
-def _list_platforms() -> None:
-    """List available optimized platform adapters."""
-    platforms = PlatformAdapterFactory.list_platforms()
-
-    table = Table(
-        title="[bold]Optimized Platform Adapters[/bold]",
-        show_header=True,
-        header_style="bold cyan",
-    )
-    table.add_column("Platform", style="cyan")
-    table.add_column("Base URL", style="green")
-    table.add_column("Discovery", style="yellow")
-
-    for platform in platforms:
-        adapter = PlatformAdapterFactory.get_adapter(platform=platform)
-        strategy = adapter.get_discovery_strategy()
-        table.add_row(platform, adapter.base_url, strategy.name)
-
-    console.print()
-    console.print(table)
-    console.print()
-    console.print(
-        "[dim]Note: Any documentation site works! These platforms have optimized adapters.[/dim]"
-    )
 
 
 app = typer.Typer(
@@ -264,31 +236,8 @@ def scrape(
     _scrape(url, output, max_pages, delay, resume, verbose, quiet, include, exclude)
 
 
-@app.command("platforms")
-def platforms() -> None:
-    """List available optimized platform adapters."""
-    _list_platforms()
-
-
-# Create a simpler CLI for direct URL usage
 def main() -> None:
-    """Main entry point with smart argument handling.
-
-    Allows both:
-        docscrape https://docs.example.com
-        docscrape scrape https://docs.example.com
-    """
-    # Check if first arg looks like a URL (not a command)
-    if len(sys.argv) > 1:
-        first_arg = sys.argv[1]
-        # If it looks like a URL or starts with http, insert 'scrape' command
-        if (
-            first_arg.startswith(("http://", "https://"))
-            or "." in first_arg
-            and first_arg not in ("platforms", "scrape", "--help", "-h", "--version", "-V")
-        ):
-            sys.argv.insert(1, "scrape")
-
+    """Main entry point."""
     app()
 
 
