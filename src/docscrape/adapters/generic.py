@@ -134,6 +134,11 @@ class GenericAdapter(PlatformAdapter):
     def url_to_filepath(self, url: str, output_dir: Path) -> Path:
         """Convert URL to filepath.
 
+        Strips the base URL's path prefix from the incoming URL so pages
+        land cleanly inside output_dir instead of doubling up the prefix.
+        (Necessary because `_derive_output_from_url` now bakes the base
+        URL path into output_dir itself.)
+
         Args:
             url: Source URL.
             output_dir: Base output directory.
@@ -143,6 +148,11 @@ class GenericAdapter(PlatformAdapter):
         """
         parsed = urlparse(url)
         path = parsed.path.strip("/")
+
+        # Strip the base URL path prefix if the URL sits under it.
+        base_path = urlparse(self._base_url).path.strip("/")
+        if base_path and (path == base_path or path.startswith(base_path + "/")):
+            path = path[len(base_path) :].strip("/")
 
         if not path:
             path = "index"

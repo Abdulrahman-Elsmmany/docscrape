@@ -8,8 +8,7 @@ import re
 from collections.abc import AsyncIterator
 from urllib.parse import urljoin
 
-import httpx
-
+from docscrape.core.http import RequestException, make_session
 from docscrape.core.interfaces import DiscoveryStrategy
 from docscrape.core.models import DiscoveredUrl, ScrapeConfig
 
@@ -43,16 +42,12 @@ class LlmsTxtDiscovery(DiscoveryStrategy):
         if config.verbose:
             print(f"Fetching llms.txt from {llms_txt_url}...")
 
-        async with httpx.AsyncClient() as client:
+        async with make_session(timeout=config.timeout) as client:
             try:
-                response = await client.get(
-                    llms_txt_url,
-                    timeout=config.timeout,
-                    follow_redirects=True,
-                )
+                response = await client.get(llms_txt_url)
                 response.raise_for_status()
                 content = response.text
-            except httpx.HTTPError as e:
+            except RequestException as e:
                 if config.verbose:
                     print(f"Failed to fetch llms.txt: {e}")
                 return

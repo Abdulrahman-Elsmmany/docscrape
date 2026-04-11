@@ -1,7 +1,8 @@
-"""Documentation crawler using httpx and BeautifulSoup.
+"""Documentation crawler using curl_cffi and BeautifulSoup.
 
 This module provides a lightweight crawler for documentation sites,
-using httpx for async HTTP requests and BeautifulSoup for HTML parsing.
+using curl_cffi (with Chrome TLS fingerprint impersonation) for async
+HTTP requests and BeautifulSoup for HTML parsing.
 """
 
 import asyncio
@@ -9,7 +10,6 @@ import time
 from collections.abc import AsyncIterator
 from datetime import datetime
 
-import httpx
 from rich.console import Console
 from rich.progress import (
     BarColumn,
@@ -21,6 +21,7 @@ from rich.progress import (
     TimeElapsedColumn,
 )
 
+from docscrape.core.http import DocAsyncSession, HTTPError, RequestException, make_session
 from docscrape.core.interfaces import PlatformAdapter, StorageBackend
 from docscrape.core.models import (
     CrawlResult,
@@ -214,17 +215,33 @@ class DocumentationCrawler:
         # Sort by priority (higher first)
         urls.sort(key=lambda u: (-u.priority, u.url))
 
-        # If no URLs found, try fallback strategy
-        if not urls and hasattr(self._adapter, "get_fallback_strategy"):
+        # Fall back to recursive crawl when the primary strategy yields 0 or 1
+        # URLs. One URL is usually just the starting page (this is what happens
+        # on version-pinned readthedocs sites: the domain-root sitemap lists
+        # the canonical stable URLs, only the release root matches our prefix
+        # filter, and we're left with nothing to actually crawl). Merge the
+        # fallback results with the primary results, deduping by URL (trailing
+        # slashes normalized so sitemap "x/" and recursive "x" don't both crawl).
+        if len(urls) < 2 and hasattr(self._adapter, "get_fallback_strategy"):
             fallback = self._adapter.get_fallback_strategy()
             if self._config.verbose:
-                print(f"Primary strategy found no URLs, trying fallback: {fallback.name}")
+                print(
+                    f"Primary strategy found {len(urls)} URL(s), trying fallback: {fallback.name}"
+                )
 
+            def _dedup_key(u: str) -> str:
+                return u.rstrip("/")
+
+            seen_urls: set[str] = {_dedup_key(u.url) for u in urls}
             async for url in fallback.discover(self._config):
+                key = _dedup_key(url.url)
+                if key in seen_urls:
+                    continue
                 if self._adapter.should_skip(url.url):
                     continue
                 url.priority = self._adapter.get_url_priority(url.url)
                 urls.append(url)
+                seen_urls.add(key)
 
             urls.sort(key=lambda u: (-u.priority, u.url))
 
@@ -286,10 +303,7 @@ class DocumentationCrawler:
                 # Rate limiting
                 await asyncio.sleep(self._config.request_delay)
 
-        async with httpx.AsyncClient(
-            timeout=self._config.timeout,
-            follow_redirects=True,
-        ) as client:
+        async with make_session(timeout=self._config.timeout) as client:
             tasks = [asyncio.create_task(fetch_one(i, d)) for i, d in enumerate(urls, 1)]
 
             for _ in range(len(urls)):
@@ -316,7 +330,7 @@ class DocumentationCrawler:
         # Keep the last part of the URL (path)
         return "..." + url[-(max_len - 3) :]
 
-    async def _fetch_and_extract(self, client: httpx.AsyncClient, url: str) -> DocumentPage:
+    async def _fetch_and_extract(self, client: DocAsyncSession, url: str) -> DocumentPage:
         """Fetch a URL and extract content.
 
         Args:
@@ -332,7 +346,7 @@ class DocumentationCrawler:
         for attempt in range(self._config.max_retries):
             try:
                 response = await client.get(url)
-                response.raise_for_status()
+                response.raise_for_status()  # type: ignore[no-untyped-call]
 
                 html = response.text
                 page = self._adapter.extract_content(html, url)
@@ -342,12 +356,14 @@ class DocumentationCrawler:
 
                 return page
 
-            except httpx.HTTPStatusError as e:
-                if e.response.status_code == 404:
+            except HTTPError as e:
+                # raise_for_status() path: status is not 2xx/3xx
+                if e.response is not None and e.response.status_code == 404:
                     raise  # Don't retry 404s
                 last_error = e
 
-            except httpx.RequestError as e:
+            except RequestException as e:
+                # Network / transport / timeout / TLS errors
                 last_error = e
 
             if attempt < self._config.max_retries - 1:

@@ -6,8 +6,7 @@ import xml.etree.ElementTree as ET
 from collections.abc import AsyncIterator
 from urllib.parse import urljoin, urlparse
 
-import httpx
-
+from docscrape.core.http import DocAsyncSession, RequestException, make_session
 from docscrape.core.interfaces import DiscoveryStrategy
 from docscrape.core.models import DiscoveredUrl, ScrapeConfig
 
@@ -46,7 +45,7 @@ class SitemapDiscovery(DiscoveryStrategy):
         domain_root = f"{parsed.scheme}://{parsed.netloc}"
         has_deep_path = parsed.path.strip("/") != ""
 
-        async with httpx.AsyncClient() as client:
+        async with make_session(timeout=config.timeout) as client:
             # Try each sitemap path relative to base_url
             for path in self._sitemap_paths:
                 sitemap_url = urljoin(base_url + "/", path.lstrip("/"))
@@ -55,17 +54,13 @@ class SitemapDiscovery(DiscoveryStrategy):
                     print(f"Trying sitemap at {sitemap_url}...")
 
                 try:
-                    response = await client.get(
-                        sitemap_url,
-                        timeout=config.timeout,
-                        follow_redirects=True,
-                    )
+                    response = await client.get(sitemap_url)
                     if response.status_code == 200:
                         urls = await self._parse_sitemap(client, response.text, base_url, config)
                         for url in urls:
                             yield url
                         return  # Found a working sitemap
-                except httpx.HTTPError as e:
+                except RequestException as e:
                     if config.verbose:
                         print(f"Failed to fetch {sitemap_url}: {e}")
 
@@ -78,11 +73,7 @@ class SitemapDiscovery(DiscoveryStrategy):
                         print(f"Trying domain-root sitemap at {sitemap_url}...")
 
                     try:
-                        response = await client.get(
-                            sitemap_url,
-                            timeout=config.timeout,
-                            follow_redirects=True,
-                        )
+                        response = await client.get(sitemap_url)
                         if response.status_code == 200:
                             urls = await self._parse_sitemap(
                                 client, response.text, base_url, config
@@ -91,13 +82,13 @@ class SitemapDiscovery(DiscoveryStrategy):
                                 for url in urls:
                                     yield url
                                 return  # Found matching URLs in domain-root sitemap
-                    except httpx.HTTPError as e:
+                    except RequestException as e:
                         if config.verbose:
                             print(f"Failed to fetch {sitemap_url}: {e}")
 
     async def _parse_sitemap(
         self,
-        client: httpx.AsyncClient,
+        client: DocAsyncSession,
         content: str,
         base_url: str,
         config: ScrapeConfig,
@@ -129,17 +120,13 @@ class SitemapDiscovery(DiscoveryStrategy):
                 loc = sitemap.find("sm:loc", self.SITEMAP_NS)
                 if loc is not None and loc.text:
                     try:
-                        response = await client.get(
-                            loc.text,
-                            timeout=config.timeout,
-                            follow_redirects=True,
-                        )
+                        response = await client.get(loc.text)
                         if response.status_code == 200:
                             child_urls = await self._parse_sitemap(
                                 client, response.text, base_url, config
                             )
                             urls.extend(child_urls)
-                    except httpx.HTTPError:
+                    except RequestException:
                         pass
         else:
             # This is a regular sitemap

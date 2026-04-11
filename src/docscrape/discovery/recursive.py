@@ -6,9 +6,9 @@ from collections import deque
 from collections.abc import AsyncIterator
 from urllib.parse import ParseResult, urljoin, urlparse
 
-import httpx
 from bs4 import BeautifulSoup, Tag
 
+from docscrape.core.http import RequestException, make_session
 from docscrape.core.interfaces import DiscoveryStrategy
 from docscrape.core.models import DiscoveredUrl, ScrapeConfig
 
@@ -49,7 +49,7 @@ class RecursiveCrawlDiscovery(DiscoveryStrategy):
         visited: set[str] = set()
         queue: deque[tuple[str, int]] = deque([(base_url, 0)])
 
-        async with httpx.AsyncClient() as client:
+        async with make_session(timeout=config.timeout) as client:
             while queue:
                 url, depth = queue.popleft()
 
@@ -72,11 +72,7 @@ class RecursiveCrawlDiscovery(DiscoveryStrategy):
                     print(f"Discovering (depth={depth}): {url}")
 
                 try:
-                    response = await client.get(
-                        url,
-                        timeout=config.timeout,
-                        follow_redirects=True,
-                    )
+                    response = await client.get(url)
 
                     if response.status_code != 200:
                         continue
@@ -84,6 +80,14 @@ class RecursiveCrawlDiscovery(DiscoveryStrategy):
                     content_type = response.headers.get("content-type", "")
                     if "text/html" not in content_type:
                         continue
+
+                    # Use the post-redirect URL for link resolution. Our
+                    # internal `visited` set uses the normalized (slash-stripped)
+                    # form for dedup, but urljoin on a slash-stripped directory
+                    # URL resolves relative links one level too high. The
+                    # server's final URL (e.g. with the trailing slash
+                    # preserved) is the right base for relative links.
+                    effective_url = str(response.url) if response.url else url
 
                     html = response.text
                     title = self._extract_title(html)
@@ -97,7 +101,7 @@ class RecursiveCrawlDiscovery(DiscoveryStrategy):
 
                     # Find links to add to queue
                     if depth < self._max_depth:
-                        links = self._extract_links(html, url, parsed_base)
+                        links = self._extract_links(html, effective_url, parsed_base)
                         for link in links:
                             if link not in visited:
                                 queue.append((link, depth + 1))
@@ -105,7 +109,7 @@ class RecursiveCrawlDiscovery(DiscoveryStrategy):
                     # Rate limiting
                     await asyncio.sleep(config.request_delay)
 
-                except httpx.HTTPError as e:
+                except RequestException as e:
                     if config.verbose:
                         print(f"Error fetching {url}: {e}")
 

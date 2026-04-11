@@ -30,10 +30,16 @@ def version_callback(value: bool) -> None:
 def _derive_output_from_url(url: str) -> Path:
     """Derive output directory from URL.
 
+    Includes the URL path as nested subdirectories under the domain slug so
+    sibling projects on the same domain don't clobber each other's manifest
+    and index files (e.g. docs.astral.sh/uv vs docs.astral.sh/ruff).
+
     Examples:
-        https://docs.pipecat.ai -> ./pipecat/
-        https://docs.livekit.io/agents -> ./livekit/
-        https://example.com/docs -> ./example/
+        https://docs.pipecat.ai                           -> ./pipecat/
+        https://docs.astral.sh/uv                         -> ./astral/uv/
+        https://docs.astral.sh/ruff                       -> ./astral/ruff/
+        https://docs.livekit.io/agents                    -> ./livekit/agents/
+        https://xgboost.readthedocs.io/en/release_3.2.0/  -> ./xgboost/en/release_3.2.0/
     """
     parsed = urlparse(url)
     domain = parsed.netloc
@@ -45,9 +51,10 @@ def _derive_output_from_url(url: str) -> Path:
 
     # Extract the main domain name (before .com, .io, .ai, etc.)
     match = re.match(r"^([a-zA-Z0-9-]+)", domain)
-    name = match.group(1).lower() if match else "docs"
+    slug = match.group(1).lower() if match else "docs"
 
-    return Path(f"./{name}/")
+    path_segments = [seg for seg in parsed.path.strip("/").split("/") if seg]
+    return Path("./", slug, *path_segments)
 
 
 async def _run_crawler(adapter: PlatformAdapter, config: ScrapeConfig) -> None:
