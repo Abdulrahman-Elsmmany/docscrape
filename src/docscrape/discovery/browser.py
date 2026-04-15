@@ -73,13 +73,9 @@ def _normalize(url: str) -> str:
 def _should_process(url: str, base_url: str, config: ScrapeConfig) -> bool:
     if not url.startswith(base_url):
         return False
-    if config.include_patterns and not any(
-        re.search(p, url) for p in config.include_patterns
-    ):
+    if config.include_patterns and not any(re.search(p, url) for p in config.include_patterns):
         return False
-    if config.exclude_patterns and any(
-        re.search(p, url) for p in config.exclude_patterns
-    ):
+    if config.exclude_patterns and any(re.search(p, url) for p in config.exclude_patterns):
         return False
     skip = [
         r"/assets/",

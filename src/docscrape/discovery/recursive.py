@@ -89,9 +89,7 @@ class RecursiveCrawlDiscovery(DiscoveryStrategy):
                             default=min(60.0, 2.0 * (2**attempt)) + random.random(),
                         )
                         if config.verbose:
-                            print(
-                                f"[recursive] {status} on {url}; sleeping {wait:.1f}s"
-                            )
+                            print(f"[recursive] {status} on {url}; sleeping {wait:.1f}s")
                         await asyncio.sleep(wait)
                         continue
                     break

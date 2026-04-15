@@ -7,10 +7,13 @@ state, per-worker in-flight URLs, and the most recent failure reason.
 """
 
 import asyncio
+import contextlib
 import random
 import time
+from dataclasses import dataclass, field
 from datetime import datetime
 from email.utils import parsedate_to_datetime
+from typing import Any
 
 from rich.console import Console, Group
 from rich.live import Live
@@ -34,6 +37,23 @@ console = Console()
 
 _MAX_CONCURRENCY = 5
 _SENTINEL: DiscoveredUrl | None = None
+
+
+@dataclass
+class _DiscoveryState:
+    strategies: dict[str, str]
+    seen: set[str] = field(default_factory=set)
+    found: int = 0
+    enqueued: int = 0
+
+
+@dataclass
+class _CrawlState:
+    ok: int = 0
+    fail: int = 0
+    completed: int = 0
+    last_error: str | None = None
+    workers: dict[int, str] = field(default_factory=dict)
 
 
 class DocumentationCrawler:
@@ -76,21 +96,12 @@ class DocumentationCrawler:
         assert self._manifest is not None
 
         strategies = self._get_strategies()
-        discovery_state: dict = {
-            "strategies": {s.name: "running" for s in strategies},
-            "seen": set(),
-            "found": 0,
-            "enqueued": 0,
-            "current_depth": 0,
-        }
-        crawl_state: dict = {
-            "ok": 0,
-            "fail": 0,
-            "in_flight": {},
-            "last_error": None,
-            "completed": 0,
-            "workers": {i: "" for i in range(_MAX_CONCURRENCY)},
-        }
+        discovery_state = _DiscoveryState(
+            strategies={s.name: "running" for s in strategies},
+        )
+        crawl_state = _CrawlState(
+            workers={i: "" for i in range(_MAX_CONCURRENCY)},
+        )
 
         url_queue: asyncio.Queue[DiscoveredUrl | None] = asyncio.Queue(maxsize=200)
 
@@ -143,12 +154,11 @@ class DocumentationCrawler:
         self,
         strategies: list[DiscoveryStrategy],
         url_queue: asyncio.Queue[DiscoveredUrl | None],
-        state: dict,
+        state: _DiscoveryState,
     ) -> None:
         """Fan out every strategy, merge results into the crawl queue."""
         tasks = [
-            asyncio.create_task(self._run_single_strategy(s, url_queue, state))
-            for s in strategies
+            asyncio.create_task(self._run_single_strategy(s, url_queue, state)) for s in strategies
         ]
         await asyncio.gather(*tasks, return_exceptions=True)
 
@@ -156,33 +166,30 @@ class DocumentationCrawler:
         self,
         strategy: DiscoveryStrategy,
         url_queue: asyncio.Queue[DiscoveredUrl | None],
-        state: dict,
+        state: _DiscoveryState,
     ) -> None:
         try:
             async for discovered in strategy.discover(self._config):
                 key = _dedup_key(discovered.url)
-                if key in state["seen"]:
+                if key in state.seen:
                     continue
-                state["seen"].add(key)
-                state["found"] += 1
+                state.seen.add(key)
+                state.found += 1
 
                 if self._adapter.should_skip(discovered.url):
                     continue
                 if self._config.resume and discovered.url in self._completed_urls:
                     continue
-                if (
-                    self._config.max_pages > 0
-                    and state["enqueued"] >= self._config.max_pages
-                ):
-                    state["strategies"][strategy.name] = "stopped (max_pages)"
+                if self._config.max_pages > 0 and state.enqueued >= self._config.max_pages:
+                    state.strategies[strategy.name] = "stopped (max_pages)"
                     return
 
                 discovered.priority = self._adapter.get_url_priority(discovered.url)
-                state["enqueued"] += 1
+                state.enqueued += 1
                 await url_queue.put(discovered)
-            state["strategies"][strategy.name] = "done"
+            state.strategies[strategy.name] = "done"
         except Exception as e:  # noqa: BLE001
-            state["strategies"][strategy.name] = f"error: {type(e).__name__}"
+            state.strategies[strategy.name] = f"error: {type(e).__name__}"
             if self._config.verbose:
                 console.print(f"[red]{strategy.name} failed: {e}[/red]")
 
@@ -193,25 +200,22 @@ class DocumentationCrawler:
         worker_id: int,
         client: DocAsyncSession,
         url_queue: asyncio.Queue[DiscoveredUrl | None],
-        discovery_state: dict,
-        crawl_state: dict,
+        discovery_state: _DiscoveryState,
+        crawl_state: _CrawlState,
     ) -> None:
         assert self._manifest is not None
         while True:
             item = await url_queue.get()
-            if item is _SENTINEL:
-                crawl_state["workers"][worker_id] = ""
+            if item is None:
+                crawl_state.workers[worker_id] = ""
                 return
 
-            if (
-                self._config.max_pages > 0
-                and crawl_state["completed"] >= self._config.max_pages
-            ):
-                crawl_state["workers"][worker_id] = ""
+            if self._config.max_pages > 0 and crawl_state.completed >= self._config.max_pages:
+                crawl_state.workers[worker_id] = ""
                 continue
 
             url = item.url
-            crawl_state["workers"][worker_id] = url
+            crawl_state.workers[worker_id] = url
             start = time.time()
             try:
                 page = await self._fetch_and_extract(client, url)
@@ -230,10 +234,10 @@ class DocumentationCrawler:
                     error=_short_error(e),
                     duration_ms=duration,
                 )
-                crawl_state["last_error"] = f"{url} :: {result.error}"
+                crawl_state.last_error = f"{url} :: {result.error}"
 
             await self._process_result(result, crawl_state)
-            crawl_state["completed"] += 1
+            crawl_state.completed += 1
             await asyncio.sleep(self._config.request_delay)
 
     async def _fetch_and_extract(
@@ -254,9 +258,7 @@ class DocumentationCrawler:
                         default=min(60.0, 2.0 * (2**attempt)) + random.random(),
                     )
                     await asyncio.sleep(wait)
-                    last_error = HTTPError(
-                        f"{response.status_code} {_reason(response)}"
-                    )
+                    last_error = HTTPError(f"{response.status_code} {_reason(response)}")
                     continue
 
                 response.raise_for_status()  # type: ignore[no-untyped-call]
@@ -268,9 +270,7 @@ class DocumentationCrawler:
                     if rendered is not None:
                         page = rendered
 
-                page.filepath = self._adapter.url_to_filepath(
-                    url, self._config.output_dir
-                )
+                page.filepath = self._adapter.url_to_filepath(url, self._config.output_dir)
                 return page
 
             except HTTPError as e:
@@ -282,25 +282,20 @@ class DocumentationCrawler:
 
             if attempt < self._config.max_retries - 1:
                 await asyncio.sleep(
-                    min(60.0, self._config.request_delay * (2**attempt))
-                    + random.random()
+                    min(60.0, self._config.request_delay * (2**attempt)) + random.random()
                 )
 
         # All HTTP retries exhausted — try the browser fallback once.
         rendered_page = await self._try_rendered(url)
         if rendered_page is not None:
-            rendered_page.filepath = self._adapter.url_to_filepath(
-                url, self._config.output_dir
-            )
+            rendered_page.filepath = self._adapter.url_to_filepath(url, self._config.output_dir)
             return rendered_page
 
         raise last_error or Exception("Unknown error during fetch")
 
     async def _try_rendered(self, url: str) -> DocumentPage | None:
         try:
-            rendered: RenderedResponse = await fetch_rendered(
-                url, timeout=self._config.timeout * 2
-            )
+            rendered: RenderedResponse = await fetch_rendered(url, timeout=self._config.timeout * 2)
         except Exception:  # noqa: BLE001
             return None
         if not rendered.success or not rendered.html:
@@ -313,12 +308,13 @@ class DocumentationCrawler:
             return None
         return page
 
-    async def _process_result(self, result: CrawlResult, crawl_state: dict) -> None:
+    async def _process_result(self, result: CrawlResult, crawl_state: _CrawlState) -> None:
         assert self._manifest is not None
         if result.status == ScrapeStatus.SUCCESS and result.page:
-            await self._storage.save_page(result.page, result.page.filepath)  # type: ignore
+            assert result.page.filepath is not None
+            await self._storage.save_page(result.page, result.page.filepath)
             self._manifest.successful += 1
-            crawl_state["ok"] += 1
+            crawl_state.ok += 1
             self._manifest.pages.append(
                 {
                     "url": result.url,
@@ -330,23 +326,19 @@ class DocumentationCrawler:
             )
         else:
             self._manifest.failed += 1
-            crawl_state["fail"] += 1
-            self._manifest.failed_urls.append(
-                {"url": result.url, "error": result.error}
-            )
+            crawl_state.fail += 1
+            self._manifest.failed_urls.append({"url": result.url, "error": result.error})
 
         total = self._manifest.successful + self._manifest.failed
         if total % 10 == 0:
-            await self._storage.save_manifest(
-                self._manifest, self._config.output_dir
-            )
+            await self._storage.save_manifest(self._manifest, self._config.output_dir)
 
     # ------------------------------------------------------------------ UI
 
     async def _render_dashboard(
         self,
-        discovery_state: dict,
-        crawl_state: dict,
+        discovery_state: _DiscoveryState,
+        crawl_state: _CrawlState,
         stop: asyncio.Event,
     ) -> None:
         if self._config.quiet:
@@ -361,19 +353,17 @@ class DocumentationCrawler:
         ) as live:
             while not stop.is_set():
                 live.update(self._build_dashboard(discovery_state, crawl_state))
-                try:
+                with contextlib.suppress(asyncio.TimeoutError):
                     await asyncio.wait_for(stop.wait(), timeout=0.25)
-                except asyncio.TimeoutError:
-                    pass
             live.update(self._build_dashboard(discovery_state, crawl_state))
 
-    def _build_dashboard(self, discovery_state: dict, crawl_state: dict):
+    def _build_dashboard(self, discovery_state: _DiscoveryState, crawl_state: _CrawlState) -> Panel:
         table = Table.grid(padding=(0, 1))
         table.add_column(justify="right", style="bold cyan")
         table.add_column()
 
         strategies_line = Text()
-        for name, status in discovery_state["strategies"].items():
+        for name, status in discovery_state.strategies.items():
             color = {
                 "running": "yellow",
                 "done": "green",
@@ -384,34 +374,29 @@ class DocumentationCrawler:
         table.add_row(
             "Discovery",
             Text.assemble(
-                (f"{discovery_state['found']} found ", "bold white"),
-                (f"{discovery_state['enqueued']} queued  ", "dim"),
+                (f"{discovery_state.found} found ", "bold white"),
+                (f"{discovery_state.enqueued} queued  ", "dim"),
                 strategies_line,
             ),
         )
 
-        ok = crawl_state["ok"]
-        fail = crawl_state["fail"]
-        completed = crawl_state["completed"]
-        total_queued = discovery_state["enqueued"]
         crawl_summary = Text()
         crawl_summary.append(
-            f"{completed}/{total_queued}  ", style="bold white"
+            f"{crawl_state.completed}/{discovery_state.enqueued}  ", style="bold white"
         )
-        crawl_summary.append(f"ok={ok} ", style="green")
-        crawl_summary.append(f"fail={fail}", style="red" if fail else "dim")
+        crawl_summary.append(f"ok={crawl_state.ok} ", style="green")
+        crawl_summary.append(f"fail={crawl_state.fail}", style="red" if crawl_state.fail else "dim")
         table.add_row("Crawl", crawl_summary)
 
-        active = [u for u in crawl_state["workers"].values() if u]
+        active = [u for u in crawl_state.workers.values() if u]
         if active:
             workers = Text()
             for u in active[:_MAX_CONCURRENCY]:
                 workers.append(f"  • {_truncate(u, 80)}\n", style="dim")
             table.add_row("In flight", workers)
 
-        last_error = crawl_state.get("last_error")
-        if last_error:
-            table.add_row("Last error", Text(_truncate(last_error, 120), style="red"))
+        if crawl_state.last_error:
+            table.add_row("Last error", Text(_truncate(crawl_state.last_error, 120), style="red"))
 
         return Panel(
             Group(table),
@@ -431,8 +416,8 @@ def _short_error(err: Exception) -> str:
     return msg[:240]
 
 
-def _reason(response) -> str:
-    return getattr(response, "reason", "") or ""
+def _reason(response: Any) -> str:
+    return str(getattr(response, "reason", "") or "")
 
 
 def _truncate(text: str, max_len: int) -> str:

@@ -66,9 +66,7 @@ class SitemapDiscovery(DiscoveryStrategy):
                     if response.status_code == 200:
                         content = _decode_sitemap(sitemap_url, response)
                         if content:
-                            urls = await self._parse_sitemap(
-                                client, content, base_url, config
-                            )
+                            urls = await self._parse_sitemap(client, content, base_url, config)
                             for url in urls:
                                 yield url
                             return  # Found a working sitemap
@@ -90,9 +88,7 @@ class SitemapDiscovery(DiscoveryStrategy):
                             content = _decode_sitemap(sitemap_url, response)
                             if not content:
                                 continue
-                            urls = await self._parse_sitemap(
-                                client, content, base_url, config
-                            )
+                            urls = await self._parse_sitemap(client, content, base_url, config)
                             if urls:
                                 for url in urls:
                                     yield url
