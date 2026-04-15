@@ -54,6 +54,15 @@ class PlatformAdapter(ABC):
         """Return the preferred discovery strategy for this platform."""
         ...
 
+    def get_discovery_strategies(self) -> list[DiscoveryStrategy]:
+        """Return every discovery strategy to run in parallel.
+
+        Overriding adapters should return a list of strategies whose
+        results will be merged and deduplicated. Default falls back to
+        the single ``get_discovery_strategy()`` for back-compat.
+        """
+        return [self.get_discovery_strategy()]
+
     @abstractmethod
     def extract_content(self, html: str, url: str) -> DocumentPage:
         """Extract content from HTML.

@@ -1,6 +1,7 @@
 """Discovery strategy using sitemap.xml files."""
 
 import contextlib
+import gzip
 import re
 import xml.etree.ElementTree as ET
 from collections.abc import AsyncIterator
@@ -24,7 +25,14 @@ class SitemapDiscovery(DiscoveryStrategy):
             sitemap_paths: Paths to sitemap files (relative to base URL).
                           Defaults to ["/sitemap.xml", "/sitemap_index.xml"].
         """
-        self._sitemap_paths = sitemap_paths or ["/sitemap.xml", "/sitemap_index.xml"]
+        self._sitemap_paths = sitemap_paths or [
+            "/sitemap.xml",
+            "/sitemap_index.xml",
+            "/sitemap-index.xml",
+            "/sitemap.xml.gz",
+            "/sitemaps/sitemap.xml",
+            "/sitemap/sitemap.xml",
+        ]
 
     @property
     def name(self) -> str:
@@ -56,10 +64,14 @@ class SitemapDiscovery(DiscoveryStrategy):
                 try:
                     response = await client.get(sitemap_url)
                     if response.status_code == 200:
-                        urls = await self._parse_sitemap(client, response.text, base_url, config)
-                        for url in urls:
-                            yield url
-                        return  # Found a working sitemap
+                        content = _decode_sitemap(sitemap_url, response)
+                        if content:
+                            urls = await self._parse_sitemap(
+                                client, content, base_url, config
+                            )
+                            for url in urls:
+                                yield url
+                            return  # Found a working sitemap
                 except RequestException as e:
                     if config.verbose:
                         print(f"Failed to fetch {sitemap_url}: {e}")
@@ -75,8 +87,11 @@ class SitemapDiscovery(DiscoveryStrategy):
                     try:
                         response = await client.get(sitemap_url)
                         if response.status_code == 200:
+                            content = _decode_sitemap(sitemap_url, response)
+                            if not content:
+                                continue
                             urls = await self._parse_sitemap(
-                                client, response.text, base_url, config
+                                client, content, base_url, config
                             )
                             if urls:
                                 for url in urls:
@@ -119,11 +134,15 @@ class SitemapDiscovery(DiscoveryStrategy):
             for sitemap in root.findall("sm:sitemap", self.SITEMAP_NS):
                 loc = sitemap.find("sm:loc", self.SITEMAP_NS)
                 if loc is not None and loc.text:
+                    child_url = loc.text.strip()
                     try:
-                        response = await client.get(loc.text)
+                        response = await client.get(child_url)
                         if response.status_code == 200:
+                            child_content = _decode_sitemap(child_url, response)
+                            if not child_content:
+                                continue
                             child_urls = await self._parse_sitemap(
-                                client, response.text, base_url, config
+                                client, child_content, base_url, config
                             )
                             urls.extend(child_urls)
                     except RequestException:
@@ -177,3 +196,20 @@ class SitemapDiscovery(DiscoveryStrategy):
         """Get text from a child element."""
         child = elem.find(f"sm:{tag}", self.SITEMAP_NS)
         return child.text if child is not None else None
+
+
+def _decode_sitemap(url: str, response: object) -> str | None:
+    """Return the sitemap body as text, transparently gunzipping .gz sitemaps.
+
+    Uses the URL suffix and/or Content-Encoding hint; curl_cffi already
+    auto-decodes gzip transport encoding, so we only need to handle
+    sitemaps served as a raw .gz file.
+    """
+    content_bytes = getattr(response, "content", None)
+    text = getattr(response, "text", "")
+    if url.endswith(".gz") and content_bytes:
+        try:
+            return gzip.decompress(content_bytes).decode("utf-8", errors="replace")
+        except (OSError, gzip.BadGzipFile):
+            return text or None
+    return text or None

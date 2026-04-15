@@ -97,10 +97,16 @@ async def _run_crawler(adapter: PlatformAdapter, config: ScrapeConfig) -> None:
         if manifest.failed_urls:
             console.print()
             console.print("[yellow]Failed URLs:[/yellow]")
-            for failed in manifest.failed_urls[:5]:
+            for failed in manifest.failed_urls[:10]:
                 console.print(f"  [dim]•[/dim] {failed['url']}")
-            if len(manifest.failed_urls) > 5:
-                console.print(f"  [dim]... and {len(manifest.failed_urls) - 5} more[/dim]")
+                error = (failed.get("error") or "").strip()
+                if error:
+                    short = error if len(error) <= 140 else error[:137] + "..."
+                    console.print(f"    [dim red]└─ {short}[/dim red]")
+            if len(manifest.failed_urls) > 10:
+                console.print(
+                    f"  [dim]... and {len(manifest.failed_urls) - 10} more[/dim]"
+                )
 
     except KeyboardInterrupt:
         console.print("\n[yellow]Interrupted. Progress saved for resume.[/yellow]")

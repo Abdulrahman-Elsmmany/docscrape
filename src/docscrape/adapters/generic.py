@@ -9,7 +9,9 @@ from markdownify import markdownify as md
 
 from docscrape.core.interfaces import DiscoveryStrategy, PlatformAdapter
 from docscrape.core.models import DocumentPage
+from docscrape.discovery.browser import BrowserDiscovery
 from docscrape.discovery.recursive import RecursiveCrawlDiscovery
+from docscrape.discovery.robots import RobotsTxtDiscovery
 from docscrape.discovery.sitemap import SitemapDiscovery
 
 MIN_CONTENT_CHARS = 200
@@ -75,6 +77,20 @@ class GenericAdapter(PlatformAdapter):
     def get_fallback_strategy(self) -> DiscoveryStrategy:
         """Return recursive crawl as fallback when sitemap discovery fails."""
         return RecursiveCrawlDiscovery(max_depth=5, content_selector="main")
+
+    def get_discovery_strategies(self) -> list[DiscoveryStrategy]:
+        """Run every available strategy in parallel and merge results.
+
+        Coverage is worth more than latency: a link that lives only in a
+        JS-rendered navbar, or only in a robots-advertised sitemap,
+        should still be picked up.
+        """
+        return [
+            SitemapDiscovery(),
+            RobotsTxtDiscovery(),
+            RecursiveCrawlDiscovery(max_depth=5, content_selector=None),
+            BrowserDiscovery(max_depth=2),
+        ]
 
     def extract_content(self, html: str, url: str) -> DocumentPage:
         """Extract content from HTML.

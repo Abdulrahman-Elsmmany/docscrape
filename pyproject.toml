@@ -39,6 +39,7 @@ dependencies = [
     "markdownify>=0.11.0",
     "lxml>=4.9.0",
     "curl-cffi>=0.15.0",
+    "crawl4ai>=0.8.6",
 ]
 
 [project.urls]

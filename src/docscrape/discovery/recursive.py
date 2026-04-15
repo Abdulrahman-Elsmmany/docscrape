@@ -1,6 +1,7 @@
 """Discovery strategy using recursive link crawling."""
 
 import asyncio
+import random
 import re
 from collections import deque
 from collections.abc import AsyncIterator
@@ -71,47 +72,54 @@ class RecursiveCrawlDiscovery(DiscoveryStrategy):
                 if config.verbose:
                     print(f"Discovering (depth={depth}): {url}")
 
-                try:
-                    response = await client.get(url)
+                response = None
+                for attempt in range(4):
+                    try:
+                        response = await client.get(url)
+                    except RequestException as e:
+                        if config.verbose:
+                            print(f"Error fetching {url}: {e}")
+                        response = None
+                        break
 
-                    if response.status_code != 200:
+                    status = response.status_code
+                    if status in (429, 503):
+                        wait = _parse_retry_after(
+                            response.headers.get("retry-after"),
+                            default=min(60.0, 2.0 * (2**attempt)) + random.random(),
+                        )
+                        if config.verbose:
+                            print(
+                                f"[recursive] {status} on {url}; sleeping {wait:.1f}s"
+                            )
+                        await asyncio.sleep(wait)
                         continue
+                    break
 
-                    content_type = response.headers.get("content-type", "")
-                    if "text/html" not in content_type:
-                        continue
+                if response is None or response.status_code != 200:
+                    continue
 
-                    # Use the post-redirect URL for link resolution. Our
-                    # internal `visited` set uses the normalized (slash-stripped)
-                    # form for dedup, but urljoin on a slash-stripped directory
-                    # URL resolves relative links one level too high. The
-                    # server's final URL (e.g. with the trailing slash
-                    # preserved) is the right base for relative links.
-                    effective_url = str(response.url) if response.url else url
+                content_type = response.headers.get("content-type", "")
+                if "text/html" not in content_type:
+                    continue
 
-                    html = response.text
-                    title = self._extract_title(html)
+                effective_url = str(response.url) if response.url else url
+                html = response.text
+                title = self._extract_title(html)
 
-                    # Yield this URL
-                    yield DiscoveredUrl(
-                        url=url,
-                        title=title,
-                        priority=max(0, 100 - depth * 10),  # Higher priority for shallower pages
-                    )
+                yield DiscoveredUrl(
+                    url=url,
+                    title=title,
+                    priority=max(0, 100 - depth * 10),
+                )
 
-                    # Find links to add to queue
-                    if depth < self._max_depth:
-                        links = self._extract_links(html, effective_url, parsed_base)
-                        for link in links:
-                            if link not in visited:
-                                queue.append((link, depth + 1))
+                if depth < self._max_depth:
+                    links = self._extract_links(html, effective_url, parsed_base)
+                    for link in links:
+                        if link not in visited:
+                            queue.append((link, depth + 1))
 
-                    # Rate limiting
-                    await asyncio.sleep(config.request_delay)
-
-                except RequestException as e:
-                    if config.verbose:
-                        print(f"Error fetching {url}: {e}")
+                await asyncio.sleep(config.request_delay)
 
     def _normalize_url(self, url: str) -> str:
         """Normalize a URL for deduplication."""
@@ -195,3 +203,25 @@ class RecursiveCrawlDiscovery(DiscoveryStrategy):
                 links.append(self._normalize_url(full_url))
 
         return links
+
+
+def _parse_retry_after(header_value: str | None, default: float) -> float:
+    """Parse a Retry-After header (seconds or HTTP-date) to a wait duration."""
+    if not header_value:
+        return default
+    value = header_value.strip()
+    if value.isdigit():
+        return min(120.0, float(value))
+    from email.utils import parsedate_to_datetime
+
+    try:
+        dt = parsedate_to_datetime(value)
+    except (TypeError, ValueError):
+        return default
+    if dt is None:
+        return default
+    from datetime import datetime, timezone
+
+    now = datetime.now(tz=timezone.utc)
+    delta = (dt - now).total_seconds()
+    return max(0.0, min(120.0, delta)) if delta > 0 else default
