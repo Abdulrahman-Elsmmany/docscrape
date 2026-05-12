@@ -1,5 +1,7 @@
+<img alt="docscrape — universal docs to Markdown CLI with multi-strategy discovery and platform adapters" src="./assets/thumbnail-dark.png" width="100%">
+
 <p align="center">
-  <img src="https://raw.githubusercontent.com/Abdulrahman-Elsmmany/Abdulrahman-Elsmmany/main/assets/docscrape-logo.png" alt="docscrape logo" width="200">
+  <img src="https://raw.githubusercontent.com/Abdulrahman-Elsmmany/Abdulrahman-Elsmmany/main/assets/docscrape-logo.png" alt="docscrape logo" width="160">
 </p>
 
 <h1 align="center">docscrape</h1>
@@ -207,6 +209,10 @@ docscrape uses multiple strategies to find documentation pages:
 3. **Recursive Crawl** - Follow links when no sitemap exists
 
 ## Architecture
+
+<img alt="docscrape Pipeline — URL through three discovery strategies (llms.txt · sitemap · recursive), converter, Markdown output" src="./assets/architecture-art-dark.png" width="100%">
+
+The codebase layout below mirrors the pipeline above.
 
 ```
 docscrape/
